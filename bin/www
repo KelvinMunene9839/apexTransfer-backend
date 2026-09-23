@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+const app = require('../src/app');
+const { port } = require('../src/config/env');
+
+app.listen(port, () => {
+  console.log(`Backend listening on http://localhost:${port}`);
+});

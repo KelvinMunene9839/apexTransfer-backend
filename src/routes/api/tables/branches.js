@@ -24,6 +24,7 @@ router.post('/', requireUser, validateBody(validateCreate), asyncWrapper(async (
   const { data, error } = await serviceClient
     .from('branches')
     .insert({
+      organization_id: req.user.organizationId,
       code: req.body.code.trim().toUpperCase(),
       name: req.body.name.trim(),
       address: req.body.address || null,
@@ -61,36 +62,16 @@ router.patch('/:id', requireUser, validateBody(validateUpdate), asyncWrapper(asy
   if (req.body.email !== undefined) patch.email = req.body.email || null;
   if (req.body.active !== undefined) patch.active = req.body.active;
 
-  const { error } = await serviceClient.from('branches').update(patch).eq('id', req.params.id);
+  const { error } = await serviceClient
+    .from('branches')
+    .update(patch)
+    .eq('id', req.params.id)
+    .eq('organization_id', req.user.organizationId);
   if (error) throw new ApiError(400, error.message);
 
   res.json({ ok: true });
 }));
 
-// Permanent delete — mirrors DeleteBranchModal's own guard (blocked when
-// the branch has any transactions in the audit trail — "never delete real
-// financial history" is the same principle payment_accounts' delete
-// applies). Node re-checks this itself rather than trusting the frontend
-// already did, same as payment_accounts.js. Staff assigned to this branch
-// have their branch_id cleared automatically by the FK constraint, not by
-// application code.
-//
-// transactions.branch_id is ON DELETE SET NULL, not a blocking constraint
-// at all -- the check below was the only thing stopping a branch delete
-// from proceeding when transactions existed. Most other tables
-// (money_gram_transactions, ria_transactions, western_union_transactions,
-// float_channel_transactions, float_movements, shifts, inter_branch_txns,
-// branch_float_transfers, internal_transfers, losses) are RESTRICT/NO
-// ACTION, so the database itself refuses the delete if any of those
-// reference this branch -- safe, if uglier than this route's own message.
-// payment_accounts.branch_id and wac_inventory.branch_id are ON DELETE
-// CASCADE, though -- a branch with real financial history there (e.g. an
-// opening balance posted before its first shift/transaction ever
-// happened) would sail past every RESTRICT check with zero rows in any of
-// those tables, then silently cascade-delete its own payment_accounts —
-// real balances gone, not reversed, no account_movements trail survives
-// to explain where the money went. Checked explicitly since the database
-// itself won't refuse this one.
 router.delete('/:id', requireUser, asyncWrapper(async (req, res) => {
   if (!isUuid(req.params.id)) throw new ApiError(400, 'id must be a uuid');
   if (!isAdmin(req.user)) throw new ApiError(403, 'Not authorized to delete branches');
@@ -98,7 +79,8 @@ router.delete('/:id', requireUser, asyncWrapper(async (req, res) => {
   const { count, error: countErr } = await serviceClient
     .from('transactions')
     .select('id', { count: 'exact', head: true })
-    .eq('branch_id', req.params.id);
+    .eq('branch_id', req.params.id)
+    .eq('organization_id', req.user.organizationId);
   if (countErr) throw new ApiError(400, countErr.message);
   if ((count || 0) > 0) {
     throw new ApiError(409, `Cannot delete — ${count} transaction(s) recorded for this branch. Deactivate it instead.`);

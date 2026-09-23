@@ -159,6 +159,7 @@ router.post('/', requireUser, validateBody(validateCreate), asyncWrapper(async (
   const { data: txData, error: txError } = await serviceClient
     .from('transactions')
     .insert({
+      organization_id: req.user.organizationId,
       reference: b.reference ?? undefined,
       type: b.type,
       pair_id: b.pair_id ?? null,

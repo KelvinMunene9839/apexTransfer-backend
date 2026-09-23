@@ -48,8 +48,13 @@ router.post('/', requireUser, validateBody(validateCreate), asyncWrapper(async (
   }
 
   if (branchId) {
-    const { data: branch } = await serviceClient.from('branches').select('id').eq('id', branchId).maybeSingle();
-    if (!branch) throw new ApiError(400, 'Unknown branch_id');
+    const { data: branch } = await serviceClient
+      .from('branches')
+      .select('id')
+      .eq('id', branchId)
+      .eq('organization_id', req.user.organizationId)
+      .maybeSingle();
+    if (!branch) throw new ApiError(400, 'Unknown or unauthorized branch_id for this organization');
   }
 
   const { data: createdUser, error: createError } = await serviceClient.auth.admin.createUser({
@@ -66,6 +71,7 @@ router.post('/', requireUser, validateBody(validateCreate), asyncWrapper(async (
     id: createdUser.user.id,
     full_name: fullName,
     role,
+    organization_id: req.user.organizationId,
     branch_id: branchId,
   });
   if (profileError) {
